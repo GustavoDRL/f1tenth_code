@@ -1,0 +1,25 @@
+/gap_follow:
+  ros__parameters:
+    # General Parameters
+    use_sim_time: true
+    
+    # Gap Detection Parameters
+    max_range: 10.0
+    min_gap_width: 0.5
+    max_gap_depth: 1.0
+    danger_distance: 0.8
+    
+    # Controller Parameters
+    pred_horizon: 15
+    control_dt: 0.1
+    num_trajectories: 7
+    
+    # Velocity Limits
+    max_linear_velocity: 0.5
+    max_angular_velocity: 1.0
+    
+    # Cost Function Weights
+    weight_gap: 1.0
+    weight_obstacle: 2.0
+    weight_smooth: 0.3
+    weight_progress: 0.5
