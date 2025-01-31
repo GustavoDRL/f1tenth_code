@@ -7,3 +7,5 @@ ros2_ws/src/log
 .obsisian/
 test/
 ompl-1.6.0
+*.gv
+*.pdf
