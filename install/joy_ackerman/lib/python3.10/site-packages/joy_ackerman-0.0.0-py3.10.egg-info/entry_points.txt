@@ -1,0 +1,3 @@
+[console_scripts]
+joy_ackerman = joy_ackerman.joy_ackerman:main
+

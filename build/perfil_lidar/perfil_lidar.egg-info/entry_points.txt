@@ -1,0 +1,3 @@
+[console_scripts]
+perfil_lidar = perfil_lidar.perfil_lidar:main
+
