@@ -1,9 +1,0 @@
-/sim_ws/build/my_robot_mapper/CMakeFiles/uninstall.dir
-/sim_ws/build/my_robot_mapper/CMakeFiles/my_robot_mapper_uninstall.dir
-/sim_ws/build/my_robot_mapper/CMakeFiles/test.dir
-/sim_ws/build/my_robot_mapper/CMakeFiles/edit_cache.dir
-/sim_ws/build/my_robot_mapper/CMakeFiles/rebuild_cache.dir
-/sim_ws/build/my_robot_mapper/CMakeFiles/list_install_components.dir
-/sim_ws/build/my_robot_mapper/CMakeFiles/install.dir
-/sim_ws/build/my_robot_mapper/CMakeFiles/install/local.dir
-/sim_ws/build/my_robot_mapper/CMakeFiles/install/strip.dir

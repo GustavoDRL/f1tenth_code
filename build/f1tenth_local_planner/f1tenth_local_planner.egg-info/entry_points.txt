@@ -1,3 +1,0 @@
-[console_scripts]
-local_planner = f1tenth_local_planner.local_planner:main
-

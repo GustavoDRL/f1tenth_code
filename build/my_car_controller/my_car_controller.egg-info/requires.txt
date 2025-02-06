@@ -1,4 +1,0 @@
-numpy<1.25.0,>=1.17.3
-scikit-learn
-scipy
-setuptools

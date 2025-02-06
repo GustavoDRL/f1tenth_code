@@ -1,3 +1,0 @@
-[console_scripts]
-car_controller = my_car_controller.car_controller:main
-
