@@ -1,11 +1,71 @@
-log/
+# ROS 2 build directories
 build/
 install/
-ros2_ws/src/build
-ros2_ws/src/install
-ros2_ws/src/log
-.obsisian/
+log/
+
+# ROS 2 workspace specific
+ros2_ws/src/build/
+ros2_ws/src/install/
+ros2_ws/src/log/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# IDEs and editors
+.idea/
+.vscode/
+*.swp
+*.swo
+.obsidian/
+*.sublime-workspace
+*.sublime-project
+
+# Test directories
 test/
-ompl-1.6.0
+tests/
+Testing/
+
+# Documentation and generated files
+ompl-1.6.0/
 *.gv
 *.pdf
+*.html
+doxygen/
+
+# Compilation database
+compile_commands.json
+
+# System specific
+.DS_Store
+Thumbs.db
+
+# Colcon specific
+.colcon/
+.colcon_cd_root
+
+# Environment files
+.env
+.venv/
+ENV/
+
+# Debug files
+*.debug
+core.*
