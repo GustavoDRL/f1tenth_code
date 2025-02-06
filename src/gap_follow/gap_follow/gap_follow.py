@@ -53,8 +53,9 @@ class ScanData:
 class PIDController:
     """Robust PID controller implementation with anti-windup and safety features."""
 
-    def __init__(self, params: PIDParameters):
+    def __init__(self, params: PIDParameters, logger=None):
         self.params = params
+        self.logger = logger
         self.reset()
 
     def reset(self):
@@ -140,8 +141,6 @@ class ThreadedGapFollower(Node):
         # State variables
         self.current_speed = 0.0
         self.should_run = True
-        self.previous_gap = None
-        self.gap_switch_threshold = 0.2  # 20% better score required to switch gaps
         
         self._load_parameters()
         self._init_controllers()
@@ -173,12 +172,12 @@ class ThreadedGapFollower(Node):
             # Maximum velocity limit in meters/second
             # Upper bound on robot speed for safety
             # Should account for mechanical limits and stopping distance
-            ('max_speed', 1.0),
+            ('max_speed', 0.50),
             
             # Minimum velocity threshold in meters/second 
             # Lower bound to maintain momentum and prevent stalling
             # Especially important for differential drive robots
-            ('min_speed', 0.5),
+            ('min_speed', 0.1),
             
             # Maximum steering angle in radians
             # Physical limit of steering mechanism
@@ -211,6 +210,12 @@ class ThreadedGapFollower(Node):
             # Larger values increase smoothing but add latency
             ('median_filter_size', 5),
             
+            # Debug verbosity level (0-2)
+            # 0: Errors only
+            # 1: Warnings and important info
+            # 2: Detailed debugging data
+            ('log_level', 0),
+            
             # Minimum obstacle clearance in meters
             # Critical safety parameter for collision avoidance
             # Should exceed robot radius + uncertainty margin
@@ -229,7 +234,7 @@ class ThreadedGapFollower(Node):
                 raise ValueError("Safety margin too small (minimum 0.1m)")
 
         except Exception as e:
-            print(f"Parameter loading error: {str(e)}")
+            self.get_logger().error(f"Parameter loading error: {str(e)}")
             raise
 
     def _init_controllers(self):
@@ -250,6 +255,7 @@ class ThreadedGapFollower(Node):
             max_output=self.params['max_speed']
         )
         
+        print("[DEBUG] Initializing PID controllers with steering params:", steering_params)
         self.steering_pid = PIDController(steering_params)
         self.speed_pid = PIDController(speed_params)
 
@@ -285,7 +291,7 @@ class ThreadedGapFollower(Node):
                 self.scan_queue.get_nowait()  # Remove old scan
             self.scan_queue.put_nowait(msg)
         except Exception as e:
-            print(f"Scan queue error: {str(e)}")
+            self.get_logger().error(f"Scan queue error: {str(e)}")
 
     def _scan_processing_loop(self):
         """Dedicated thread for scan processing."""
@@ -320,7 +326,7 @@ class ThreadedGapFollower(Node):
             except Empty:
                 continue
             except Exception as e:
-                print(f"Scan processing error: {str(e)}")
+                self.get_logger().error(f"Scan processing error: {str(e)}")
 
     def _preprocess_scan(self, msg: LaserScan) -> np.ndarray:
         """Clean and filter laser range data."""
@@ -345,111 +351,66 @@ class ThreadedGapFollower(Node):
         return np.column_stack((x, y))
 
     def _detect_gaps(self, points: np.ndarray, angle_inc: float) -> List[Dict]:
-        """Improved gap detection using region growing algorithm."""
+        """Identify navigable gaps in the environment."""
+        print("[DEBUG] Starting gap detection")
+        diffs = np.diff(points, axis=0)
+        distances = np.linalg.norm(diffs, axis=1)
+        gap_indices = np.where(distances > self.params['max_gap_depth'])[0]
+        
         gaps = []
-        current_gap = None
-        min_points_for_gap = 3  # Minimum consecutive points to consider as a gap
-        
-        for i in range(1, len(points)):
-            distance = np.linalg.norm(points[i] - points[i-1])
-            
-            if distance > self.params['max_gap_depth']:
-                if current_gap is None:
-                    current_gap = {'start': i-1, 'end': i, 'depths': []}
-                current_gap['end'] = i
-                current_gap['depths'].append(min(points[i-1][0], points[i][0]))
-            else:
-                if current_gap is not None:
-                    # Only consider gaps with sufficient angular span
-                    angular_width = (current_gap['end'] - current_gap['start']) * angle_inc
-                    if angular_width >= math.radians(10):  # 10 degree minimum
-                        current_gap['min_depth'] = min(current_gap['depths'])
-                        gaps.append(current_gap)
-                    current_gap = None
-
-        # Process remaining gap
-        if current_gap is not None:
-            gaps.append(current_gap)
-
-        return self._process_gap_candidates(gaps, points, angle_inc)
-
-    def _process_gap_candidates(self, gaps, points, angle_inc):
-        """Process raw gap candidates into validated gaps."""
-        valid_gaps = []
-        
-        for gap in gaps:
-            start_idx = gap['start']
-            end_idx = gap['end']
-            
-            # Calculate actual gap width using law of cosines
-            a = np.linalg.norm(points[start_idx])
-            b = np.linalg.norm(points[end_idx])
-            theta = (end_idx - start_idx) * angle_inc
-            width = math.sqrt(a**2 + b**2 - 2*a*b*math.cos(theta))
-            
-            # Calculate safety metrics
-            safety_margin = self.params['safety_margin']
-            gap_center = (points[start_idx] + points[end_idx]) / 2
-            angle_to_center = math.atan2(gap_center[1], gap_center[0])
-            
-            # Conservative width estimate
-            effective_width = width * 0.7  # Account for perception uncertainty
-            
-            if (effective_width >= self.params['min_gap_width'] and
-                gap['min_depth'] > safety_margin):
+        for idx in gap_indices:
+            if idx + 1 >= len(points):
+                continue
                 
-                valid_gaps.append({
-                    'start_idx': start_idx,
-                    'end_idx': end_idx,
-                    'width': effective_width,
-                    'angle': angle_to_center,
-                    'depth': gap['min_depth'],
-                    'angular_span': theta,
-                    'score': self._calculate_gap_score(effective_width, gap_center, theta)
-                })
-        
-        return sorted(valid_gaps, key=lambda x: x['score'], reverse=True)
+            p1 = points[idx]
+            p2 = points[idx + 1]
+            midpoint = (p1 + p2) / 2
+            gap_width = np.linalg.norm(p2 - p1)
+            
+            # Calculate angle relative to robot's heading
+            angle = np.arctan2(midpoint[1], midpoint[0])
+            print(f"[DEBUG] Found potential gap: width={gap_width:.2f}, angle={math.degrees(angle):.2f}°")
+            
+            gap = {
+                'start_idx': idx,
+                'end_idx': idx + 1,
+                'width': gap_width,
+                'angle': angle,
+                'distance': np.linalg.norm(midpoint),
+                'midpoint': midpoint,
+                'score': self._calculate_gap_score(gap_width, midpoint)
+            }
+            
+            if self._is_valid_gap(gap):
+                gaps.append(gap)
+                
+        if gaps:
+            print(f"[DEBUG] Found {len(gaps)} valid gaps")
+        else:
+            print("[DEBUG] No valid gaps found")
+                
+        return sorted(gaps, key=lambda x: x['score'], reverse=True)
 
-    def _calculate_gap_score(self, width: float, midpoint: np.ndarray, angular_span: float) -> float:
-        """Enhanced scoring function with multiple factors."""
-        distance_score = math.exp(-0.5 * midpoint[0]/self.params['max_range'])
-        width_score = math.tanh(width / self.params['min_gap_width'])
-        alignment_score = math.exp(-2 * abs(midpoint[1]/midpoint[0]))  # Prefer centered gaps
-        span_score = 1 - math.exp(-angular_span/math.radians(30))
-        
-        return (0.4 * distance_score +
-                0.3 * width_score +
-                0.2 * alignment_score +
-                0.1 * span_score)
+
+    def _calculate_gap_score(self, width: float, midpoint: np.ndarray) -> float:
+        """Calculate combined score for gap quality assessment."""
+        distance_score = (1 - (midpoint[0] / self.params['max_range']))
+        width_score = width / self.params['max_gap_depth']
+        return (self.params['distance_weight'] * distance_score +
+                (1 - self.params['distance_weight']) * width_score)
 
     def _is_valid_gap(self, gap: Dict) -> bool:
         """Validate gap against safety criteria."""
         return (gap['width'] >= self.params['min_gap_width'] and
                 gap['midpoint'][0] > self.params['safety_margin'])
 
-
     def _select_optimal_gap(self, gaps: List[Dict]) -> Dict:
-        """Select best gap with hysteresis to prevent rapid switching."""
-        if not gaps:
-            return None
-            
-        best_gap = gaps[0]
-        
-        if self.previous_gap is not None:
-            current_best_score = best_gap['score']
-            previous_score = self.previous_gap['score'] * (1 + self.gap_switch_threshold)
-            
-            if current_best_score > previous_score:
-                self.previous_gap = best_gap
-            else:
-                best_gap = self.previous_gap
-        else:
-            self.previous_gap = best_gap
-        
-        return best_gap
+        """Select the best navigable gap from detected options."""
+        return gaps[0]
 
     def _control_loop(self):
         """Dedicated thread for control computation."""
+        print("[DEBUG] Control loop started")
         while self.should_run:
             try:
                 scan_data = self.command_queue.get(timeout=0.1)
@@ -462,16 +423,18 @@ class ThreadedGapFollower(Node):
                 with self.pid_lock:
                     steering_cmd = self._compute_steering_command(scan_data.target_angle)
                     speed_cmd = self._compute_speed_command(steering_cmd)
+                    print(f"[DEBUG] Control commands: steering={math.degrees(steering_cmd):.2f}°, speed={speed_cmd:.2f}m/s")
                     self._publish_control_command(steering_cmd, speed_cmd)
             except Empty:
                 continue
             except Exception as e:
-                print(f"Control loop error: {str(e)}")
+                self.get_logger().error(f"Control loop error: {str(e)}")
                 self._execute_emergency_stop()
 
     def _compute_steering_command(self, target_angle: float) -> float:
         """Calculate steering angle using PID controller."""
         steering_cmd = self.steering_pid.compute(target_angle, self.get_clock().now())
+        print(f"[DEBUG] Steering command: target_angle={math.degrees(target_angle):.2f}°, cmd={math.degrees(steering_cmd):.2f}°")
         return steering_cmd
 
     def _compute_speed_command(self, steering: float) -> float:

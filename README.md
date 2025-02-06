@@ -1,55 +1,112 @@
-## Index
-- [Prerequisites](#prerequisites)
-- [PS4 Controller Deep Learning Data Generator](#ps4-controller-deep-learning-data-generator)
-  - [Running the Code](#running-the-code)
-    - [Start the Joy Node](#1-start-the-joy-node)
-    - [Run the Joy to Ackermann Node](#2-run-the-joy-to-ackermann-node)
-- [Acknowledgments](#acknowledgments)
+# F1TENTH Learning and Development Environment
+
+This repository contains my personal development environment for learning and experimenting with the F1TENTH autonomous racing platform. I've created a containerized setup using Docker to facilitate easy deployment of the F1TENTH simulator along with my custom ROS2 nodes for various autonomous driving functionalities.
+
+## Project Purpose
+
+This project serves as my learning platform for:
+- Understanding autonomous vehicle control systems
+- Implementing and testing different navigation strategies
+- Developing skills in ROS2 and robotics programming
+- Experimenting with various autonomous racing algorithms
 
 ## Prerequisites
 
-Make sure you have ROS 2 Humble Hawksbill installed. Then, install the required packages:
+- Docker and Docker Compose installed on your system
+- Basic understanding of ROS2 and Docker concepts
+- X11 server for GUI applications
+- Web browser for NoVNC interface access
+
+## Initial Setup
+
+Before running the simulator, you'll need to create the required Docker networks:
 
 ```bash
-sudo apt install ros-humble-ackermann-msgs
-sudo apt install ros-humble-joy
+# Create the network for X11 forwarding
+docker network create x11
+
+# Create the ROS network for inter-container communication
+docker network create ros_net
 ```
-# PS4 Controller Deep Learning Data Generator
 
-This project is a simplified version of the [ds4_driver](https://wiki.ros.org/ds4_driver). It focuses on using a PS4 controller to generate data for training a deep learning model. The project includes necessary ROS 2 packages to capture joystick commands and convert them to Ackermann steering commands.
+## Getting Started
 
-## Running the Code
-
-### Run the Launch File:
-
-To run both nodes with a single command, use the launch file:
-
+1. Clone this repository:
 ```bash
-ros2 launch joy_ackerman launch_joy.py
+git clone [your-repository-url]
+cd [repository-name]
 ```
 
-### Run Nodes Separately
-
-#### 1. Start the Joy Node
-
-The `joy` node captures the joystick commands from the PS4 controller. To run it, use the following command:
-
+2. Build and launch the environment:
 ```bash
-ros2 run joy joy_node
+docker compose up --build
 ```
 
-#### 2. Run the Joy to Ackermann Node
+3. Access the simulator through your web browser:
+```
+http://localhost:8081
+```
 
-We have developed a custom ROS 2 node that converts the joystick commands to Ackermann steering commands. To run this node, use:
+## My Custom Implementations
 
+I've developed several ROS2 packages for different aspects of autonomous vehicle control:
+
+### Manual Control System
+The Joy to Ackermann Controller allows manual control of the virtual vehicle using a gamepad, which helps in understanding vehicle dynamics and testing basic maneuvers.
+
+### Autonomous Navigation
+I've implemented multiple navigation approaches:
+
+- **Gap Following**: A reactive navigation system that identifies and follows gaps in the environment using LIDAR data
+- **Wall Following**: A PID-controlled system for maintaining consistent distance from walls
+- **SLAM Implementation**: Using Google Cartographer for creating and maintaining maps of the racing environment
+
+### Development Tools
+- **LIDAR Visualization**: Custom tools for real-time sensor data visualization and analysis
+- **Performance Monitoring**: Systems for tracking and analyzing vehicle behavior
+
+## Working with the Environment
+
+### Development Workflow
+The workspace is set up as a mounted volume, allowing you to:
+1. Edit code directly on your host machine
+2. See changes reflect immediately in the container
+3. Test modifications without container rebuilds
+
+### Running Your Code
+Access the container and run nodes:
 ```bash
-ros2 run joy_ackerman joy_ackerman
+# Enter the container
+docker compose exec sim2 bash
+
+# Setup ROS2 environment
+source /opt/ros/humble/setup.bash
+source /sim_ws/install/setup.bash
+
+# Run your nodes
+ros2 launch [package_name] [launch_file]
 ```
+
+## Project Structure
+
+```
+.
+├── docker-compose.yml    # Container orchestration
+├── Dockerfile           # Environment configuration
+├── src/
+│   ├── joy_control/    # Manual control implementation
+│   ├── gap_follow/     # Gap following navigation
+│   ├── wall_follow/    # Wall following system
+│   ├── mapping/        # SLAM and mapping tools
+│   └── visualization/  # Data visualization packages
+```
+
+## Resources
+
+- [F1TENTH Official Documentation](http://f1tenth.org)
+- [ROS2 Documentation](https://docs.ros.org/en/humble/index.html)
+
 
 ## Acknowledgments
 
-Mention any references or credits here. For example:
-
-- [ds4_driver](https://wiki.ros.org/ds4_driver) - Original project that inspired this simplified version.
-
-- Most of the codes on this project is related to the sequence of lessons available [here](https://www.youtube.com/watch?v=v6w_zVHL8WQ&amp;list=PL7rtKJAz_mPdFDJtufKmqfWRNu55s_LMc) 
+This project builds upon the F1TENTH Simulator and incorporates various open-source tools. Special thanks to the F1TENTH community for providing the base platform for learning autonomous racing concepts.
