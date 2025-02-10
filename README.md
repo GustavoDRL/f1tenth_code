@@ -91,14 +91,15 @@ ros2 launch [package_name] [launch_file]
 
 ```
 .
-├── docker-compose.yml    # Container orchestration
+├── docker-compose.yml   # Container orchestration
 ├── Dockerfile           # Environment configuration
 ├── src/
-│   ├── joy_control/    # Manual control implementation
-│   ├── gap_follow/     # Gap following navigation
-│   ├── wall_follow/    # Wall following system
-│   ├── mapping/        # SLAM and mapping tools
-│   └── visualization/  # Data visualization packages
+│   ├── joy_control/     # Manual control implementation
+│   ├── gap_follow/      # Gap following navigation
+│   ├── wall_follow/     # Wall following system
+│   ├── mapping/         # SLAM and mapping tools
+│   └── visualization/   # Data visualization packages
+│   └── f1tenth_gym_ros/ # oficial simulator
 ```
 
 ## Resources
