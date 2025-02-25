@@ -69,3 +69,5 @@ ENV/
 # Debug files
 *.debug
 core.*
+
+f1tenth_gym/
