@@ -2,7 +2,7 @@ from setuptools import setup
 from glob import glob
 import os
 
-package_name = 'joy_ackerman'
+package_name = 'joy_converter'
 
 setup(
     name=package_name,
@@ -23,7 +23,8 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'joy_ackerman = joy_ackerman.joy_ackerman:main',
+            'joy_ackerman = joy_converter.joy_ackerman:main',
+            'joy_twist = joy_converter.joy_twist:main',
         ],
     },
 )

@@ -11,7 +11,7 @@ def generate_launch_description():
             output='screen'
         ),
         Node(
-            package='joy_ackerman',
+            package='joy_converter',
             executable='joy_ackerman',
             name='joy_ackerman',
             output='screen'
