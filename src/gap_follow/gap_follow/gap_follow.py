@@ -3,8 +3,6 @@
 
 import math
 import time
-import threading
-from queue import Queue, Empty
 from dataclasses import dataclass, field
 from typing import List, Dict, Optional
 
@@ -14,6 +12,8 @@ from rclpy.node import Node
 from rclpy.time import Time
 from rclpy.qos import QoSProfile, qos_profile_sensor_data, QoSReliabilityPolicy
 from scipy.ndimage import median_filter
+from rclpy.callback_groups import ReentrantCallbackGroup
+from rcl_interfaces.msg import SetParametersResult
 
 from ackermann_msgs.msg import AckermannDriveStamped
 from nav_msgs.msg import Odometry
@@ -130,27 +130,28 @@ class ThreadedGapFollower(Node):
     def __init__(self):
         super().__init__('gap_follower')
         
-        # Queues for thread communication
-        self.scan_queue = Queue(maxsize=1)
-        self.command_queue = Queue(maxsize=1)
-        
-        # Threading locks
-        self.pid_lock = threading.Lock()
-        self.scan_lock = threading.Lock()
+        # Enable dynamic parameter updates
+        self.add_on_set_parameters_callback(self._on_parameter_event)
         
         # State variables
         self.current_speed = 0.0
-        self.should_run = True
+        self.latest_scan = None
+        self.latest_scan_data = None
         
         self._load_parameters()
         self._init_controllers()
         self._setup_ros_components()
         
-        # Start worker threads
-        self.scan_thread = threading.Thread(target=self._scan_processing_loop)
-        self.control_thread = threading.Thread(target=self._control_loop)
-        self.scan_thread.start()
-        self.control_thread.start()
+        # Register dynamic parameter callback after loading parameters
+        self.get_logger().info('Node initialized with parameters: %s' % self.params)
+        
+        # Use ROS2 timers for scan processing and control loops
+        self.callback_group_scan = ReentrantCallbackGroup()
+        self.callback_group_control = ReentrantCallbackGroup()
+        scan_rate = 1.0 / 100.0  # 100Hz
+        control_rate = 1.0 / 100.0  # 100Hz
+        self.create_timer(scan_rate, self._on_scan_timer, callback_group=self.callback_group_scan)
+        self.create_timer(control_rate, self._on_control_timer, callback_group=self.callback_group_control)
 
     def _load_parameters(self):
         """Load and validate node parameters for autonomous navigation."""
@@ -285,48 +286,33 @@ class ThreadedGapFollower(Node):
         self.current_speed = msg.twist.twist.linear.x
 
     def _scan_callback(self, msg: LaserScan):
-        """Queue new scan data for processing."""
-        try:
-            if self.scan_queue.full():
-                self.scan_queue.get_nowait()  # Remove old scan
-            self.scan_queue.put_nowait(msg)
-        except Exception as e:
-            self.get_logger().error(f"Scan queue error: {str(e)}")
+        """Store the latest scan message for timer-based processing."""
+        self.latest_scan = msg
 
-    def _scan_processing_loop(self):
-        """Dedicated thread for scan processing."""
-        while self.should_run:
-            try:
-                scan_msg = self.scan_queue.get(timeout=0.1)
-                
-                with self.scan_lock:
-                    filtered_ranges = self._preprocess_scan(scan_msg)
-                    points = self._convert_to_cartesian(filtered_ranges, scan_msg)
-                    gaps = self._detect_gaps(points, scan_msg.angle_increment)
-                    
-                    if gaps:
-                        best_gap = self._select_optimal_gap(gaps)
-                        scan_data = ScanData(
-                            timestamp=self.get_clock().now().nanoseconds / 1e9,
-                            target_angle=best_gap['angle'],
-                            ranges=filtered_ranges
-                        )
-                    else:
-                        scan_data = ScanData(
-                            timestamp=self.get_clock().now().nanoseconds / 1e9,
-                            target_angle=0.0,
-                            ranges=filtered_ranges,
-                            is_valid=False
-                        )
-                    
-                    if self.command_queue.full():
-                        self.command_queue.get_nowait()
-                    self.command_queue.put_nowait(scan_data)
-                    
-            except Empty:
-                continue
-            except Exception as e:
-                self.get_logger().error(f"Scan processing error: {str(e)}")
+    def _on_scan_timer(self):
+        """Timer callback to process the latest scan message."""
+        if self.latest_scan is None:
+            return
+        try:
+            filtered_ranges = self._preprocess_scan(self.latest_scan)
+            points = self._convert_to_cartesian(filtered_ranges, self.latest_scan)
+            gaps = self._detect_gaps(points, self.latest_scan.angle_increment)
+            if gaps:
+                best_gap = self._select_optimal_gap(gaps)
+                self.latest_scan_data = ScanData(
+                    timestamp=self.get_clock().now().nanoseconds / 1e9,
+                    target_angle=best_gap['angle'],
+                    ranges=filtered_ranges,
+                )
+            else:
+                self.latest_scan_data = ScanData(
+                    timestamp=self.get_clock().now().nanoseconds / 1e9,
+                    target_angle=0.0,
+                    ranges=filtered_ranges,
+                    is_valid=False,
+                )
+        except Exception as e:
+            self.get_logger().error(f"Scan processing error: {str(e)}")
 
     def _preprocess_scan(self, msg: LaserScan) -> np.ndarray:
         """Clean and filter laser range data."""
@@ -408,28 +394,16 @@ class ThreadedGapFollower(Node):
         """Select the best navigable gap from detected options."""
         return gaps[0]
 
-    def _control_loop(self):
-        """Dedicated thread for control computation."""
-        print("[DEBUG] Control loop started")
-        while self.should_run:
-            try:
-                scan_data = self.command_queue.get(timeout=0.1)
-                
-                if not scan_data.is_valid:
-                    print("[DEBUG] Invalid scan data, executing emergency stop")
-                    self._execute_emergency_stop()
-                    continue
-                
-                with self.pid_lock:
-                    steering_cmd = self._compute_steering_command(scan_data.target_angle)
-                    speed_cmd = self._compute_speed_command(steering_cmd)
-                    print(f"[DEBUG] Control commands: steering={math.degrees(steering_cmd):.2f}°, speed={speed_cmd:.2f}m/s")
-                    self._publish_control_command(steering_cmd, speed_cmd)
-            except Empty:
-                continue
-            except Exception as e:
-                self.get_logger().error(f"Control loop error: {str(e)}")
-                self._execute_emergency_stop()
+    def _on_control_timer(self):
+        """Timer callback to compute and publish drive commands based on processed scan data."""
+        if not hasattr(self, 'latest_scan_data') or self.latest_scan_data is None:
+            return
+        try:
+            steering = self._compute_steering_command(self.latest_scan_data.target_angle)
+            speed = self._compute_speed_command(steering)
+            self._publish_control_command(steering, speed)
+        except Exception as e:
+            self.get_logger().error(f"Control loop error: {str(e)}")
 
     def _compute_steering_command(self, target_angle: float) -> float:
         """Calculate steering angle using PID controller."""
@@ -484,21 +458,33 @@ class ThreadedGapFollower(Node):
         ]
         self.debug_pub.publish(debug_msg)
 
-    def _execute_emergency_stop(self):
-        """Immediately stop the vehicle."""
-        cmd = AckermannDriveStamped()
-        cmd.header.stamp = self.get_clock().now().to_msg()
-        cmd.header.frame_id = "base_link"
-        cmd.drive.speed = 0.0
-        cmd.drive.steering_angle = 0.0
-        self.drive_pub.publish(cmd)
-
     def destroy_node(self):
-        """Clean shutdown of threads."""
-        self.should_run = False
-        self.scan_thread.join()
-        self.control_thread.join()
+        """Clean shutdown."""
         super().destroy_node()
+
+    def _on_parameter_event(self, params: List[rcl_interfaces.msg.Parameter]):
+        """Callback for dynamic parameter updates."""
+        for param in params:
+            if param.name == 'max_range':
+                self.params['max_range'] = param.value
+            elif param.name == 'min_gap_width':
+                self.params['min_gap_width'] = param.value
+            elif param.name == 'max_gap_depth':
+                self.params['max_gap_depth'] = param.value
+            elif param.name == 'max_speed':
+                self.params['max_speed'] = param.value
+            elif param.name == 'min_speed':
+                self.params['min_speed'] = param.value
+            elif param.name == 'max_steering_angle':
+                self.params['max_steering_angle'] = param.value
+            elif param.name == 'distance_weight':
+                self.params['distance_weight'] = param.value
+            elif param.name == 'median_filter_size':
+                self.params['median_filter_size'] = param.value
+            elif param.name == 'log_level':
+                self.params['log_level'] = param.value
+            elif param.name == 'safety_margin':
+                self.params['safety_margin'] = param.value
 
 def main(args=None):
     rclpy.init(args=args)

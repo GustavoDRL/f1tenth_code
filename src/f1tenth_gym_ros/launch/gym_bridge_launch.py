@@ -38,11 +38,21 @@ def generate_launch_description():
     has_opp = config_dict['bridge']['ros__parameters']['num_agent'] > 1
     teleop = config_dict['bridge']['ros__parameters']['kb_teleop']
 
+    # Construct the full map path *without* extension for the gym_bridge
+    map_path_param_val = os.path.join(
+        get_package_share_directory('f1tenth_gym_ros'),
+        config_dict['bridge']['ros__parameters']['map_path'] # e.g., maps/Spielberg_map
+    )
+
     bridge_node = Node(
         package='f1tenth_gym_ros',
         executable='gym_bridge',
         name='bridge',
-        parameters=[config]
+        # Pass the config file AND override the map_path parameter
+        parameters=[
+            config, # Load parameters from file first
+            {'map_path': map_path_param_val} # Then override map_path with the full path
+            ]
     )
     rviz_node = Node(
         package='rviz2',
@@ -50,10 +60,15 @@ def generate_launch_description():
         name='rviz',
         arguments=['-d', os.path.join(get_package_share_directory('f1tenth_gym_ros'), 'launch', 'gym_bridge.rviz')]
     )
+    # Construct the full map path
+    map_yaml_path = os.path.join(
+        get_package_share_directory('f1tenth_gym_ros'),
+        config_dict['bridge']['ros__parameters']['map_path'] + '.yaml'
+    )
     map_server_node = Node(
         package='nav2_map_server',
         executable='map_server',
-        parameters=[{'yaml_filename': config_dict['bridge']['ros__parameters']['map_path'] + '.yaml'},
+        parameters=[{'yaml_filename': map_yaml_path},
                     {'topic': 'map'},
                     {'frame_id': 'map'},
                     {'output': 'screen'},
