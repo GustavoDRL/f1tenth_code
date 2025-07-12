@@ -81,10 +81,10 @@ class WallFollowHybrid(Node):
         
         # ==================== PARÂMETROS GEOMÉTRICOS ====================
         
-        # Ângulos do LiDAR - otimizados para S2PRO
-        self.angleA = 60    # Primeira medição (60° = lateral direita)
-        self.angleB = 90    # Segunda medição (90° = perpendicular)
-        self.search_range = 15.0  # Faixa de busca em graus para dados válidos
+        # Ângulos do LiDAR - ajustados para dados válidos do S2PRO
+        self.angleA = 75    # Primeira medição (75° = lateral direita)
+        self.angleB = 90    # Segunda medição (90° = perpendicular) 
+        self.search_range = 20.0  # Faixa de busca em graus para dados válidos
         
         # Distância desejada da parede
         self.target_distance = 0.8  # metros
