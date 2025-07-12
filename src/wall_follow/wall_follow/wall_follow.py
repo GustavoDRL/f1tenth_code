@@ -97,12 +97,27 @@ class WallFollow(Node):
         a = self.get_range_by_angle(msg, math.radians(self.angleA))
         b = self.get_range_by_angle(msg, math.radians(self.angleB))
 
-        teta = math.radians(self.angleB - self.angleA)
+        # Debug: verificar se as leituras são válidas
+        if a == 0.0 or b == 0.0:
+            print(f"DEBUG: Leituras inválidas - a: {a:.3f}, b: {b:.3f}")
+            return 0.0
 
-        alpha = math.atan((a * math.cos(teta) - b) / (a * math.sin(teta)))
+        teta = math.radians(self.angleB - self.angleA)
+        sin_teta = math.sin(teta)
+        
+        # Proteção contra divisão por zero
+        if abs(sin_teta) < 1e-6:
+            print(f"DEBUG: sin(teta) muito pequeno: {sin_teta}")
+            return 0.0
+
+        alpha = math.atan((a * math.cos(teta) - b) / sin_teta)
 
         D = b * math.cos(alpha)
         error = self.dist - D
+        
+        # Debug opcional (descomente para ver valores)
+        # print(f"a: {a:.3f}, b: {b:.3f}, alpha: {math.degrees(alpha):.1f}°, D: {D:.3f}, error: {error:.3f}")
+        
         return error
 
     def calculate_velocity(self, error):
