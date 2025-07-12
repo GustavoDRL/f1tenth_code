@@ -91,15 +91,15 @@ class WallFollowHybrid(Node):
         
         # ==================== CONTROLE DE VELOCIDADE ====================
         
-        self.base_speed = 0.8
+        self.base_speed = 1.0        # Aumentado de 0.8
         self.max_speed = 1.5
-        self.min_speed = 0.3
+        self.min_speed = 0.8         # Aumentado de 0.3 - VELOCIDADE MÍNIMA MAIOR
         self.cruise_speed = 1.2
         
-        # Zonas de controle de velocidade
-        self.precision_zone = 0.1   # Muito perto - acelerar
-        self.comfort_zone = 0.3     # Zona confortável - velocidade normal
-        self.caution_zone = 0.6     # Zona de cuidado - reduzir velocidade
+        # Zonas de controle de velocidade - ajustadas para mais agressividade
+        self.precision_zone = 0.2    # Aumentado de 0.1
+        self.comfort_zone = 0.5      # Aumentado de 0.3  
+        self.caution_zone = 1.0      # Aumentado de 0.6
         
         # ==================== FILTROS E HISTÓRICO ====================
         
@@ -263,7 +263,7 @@ class WallFollowHybrid(Node):
         """
         abs_error = abs(error)
         
-        # Sistema de zonas de velocidade
+        # Sistema de zonas de velocidade - mais agressivo para aproximação
         if abs_error <= self.precision_zone:
             # Muito próximo da trajetória ideal - pode acelerar
             velocity = self.cruise_speed
@@ -273,12 +273,12 @@ class WallFollowHybrid(Node):
             velocity = self.base_speed
             zone = "COMFORT"
         elif abs_error <= self.caution_zone:
-            # Precisa de correção - reduzir velocidade
-            velocity = self.base_speed * 0.7
+            # Precisa de correção - ainda mantém boa velocidade
+            velocity = self.base_speed * 0.9  # 90% ao invés de 70%
             zone = "CAUTION"
         else:
-            # Muito longe - velocidade mínima para correção
-            velocity = self.min_speed
+            # Muito longe - mas ainda precisa de velocidade para aproximar
+            velocity = self.min_speed  # 0.8 m/s ao invés de 0.3 m/s
             zone = "CORRECTION"
         
         # Ajuste baseado na tendência do erro
@@ -286,11 +286,11 @@ class WallFollowHybrid(Node):
             recent_errors = self.error_history[-3:]
             error_trend = (recent_errors[-1] - recent_errors[0]) / 3
             
-            # Se erro está diminuindo, pode acelerar um pouco
+            # Se erro está diminuindo, pode acelerar um pouco mais
             if abs(error_trend) < 0.05:  # Tendência estável
                 velocity *= 1.1
             elif error_trend * error < 0:  # Erro diminuindo
-                velocity *= 1.05
+                velocity *= 1.15  # Mais agressivo
         
         # Aplica limites finais
         velocity = max(self.min_speed, min(self.max_speed, velocity))
