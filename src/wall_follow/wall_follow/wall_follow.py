@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import rclpy
 from rclpy.node import Node
+from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy
 from sensor_msgs.msg import LaserScan
 from ackermann_msgs.msg import AckermannDriveStamped
 import matplotlib.pyplot as plt
@@ -20,11 +21,18 @@ class WallFollow(Node):
         self.ax.set_title('Error vs. Time')
         self.ax.grid(True)
 
+        # QoS compatível com LiDAR (BEST_EFFORT)
+        qos_profile = QoSProfile(
+            reliability=QoSReliabilityPolicy.BEST_EFFORT,
+            history=QoSHistoryPolicy.KEEP_LAST,
+            depth=10
+        )
+
         self.scan_subscriber = self.create_subscription(
             LaserScan,
             '/scan',
             self.scan_callback,
-            10
+            qos_profile  # Usar QoS compatível
         )
 
         self.publisher = self.create_publisher(
@@ -113,7 +121,7 @@ class WallFollow(Node):
         ackermann_cmd = AckermannDriveStamped()
         ackermann_cmd.drive.speed = velocity
         ackermann_cmd.drive.steering_angle = math.radians(-angle)
-        print(angle)
+        print(f"Error: {error:.3f}, Angle: {angle:.3f}, Speed: {velocity:.3f}")
         self.publisher.publish(ackermann_cmd)
 
     def plot_error_vs_time(self):
